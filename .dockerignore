@@ -1,19 +1,12 @@
-    node_modules
-    npm-debug.log
-
-
-    .env
-    .pem
-    serviceAccountKey.json
-
-
-    .git
-    .gitignore
-
-
-    Dockerfile
-    .dockerignore
-
-    logs
-    dist
-    build
+node_modules
+npm-debug.log
+.env
+.pem
+serviceAccountKey.json
+.git
+.gitignore
+Dockerfile
+.dockerignore
+logs
+dist
+build
