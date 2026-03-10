@@ -7,7 +7,7 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// 2. INICIALIZAÇÃO DO FIREBASE (DEVE VIR ANTES DOS MÓDULOS QUE USAM DB)
+// 2. INICIALIZAÇÃO DO FIREBASE
 if (!admin.apps.length) {
     admin.initializeApp({
         credential: admin.credential.cert({
@@ -20,15 +20,15 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// 3. IMPORTAÇÃO DE MÓDULOS QUE DEPENDEM DO FIREBASE JÁ INICIADO
+// 3. IMPORTAÇÃO DE MÓDULOS (APÓS FIREBASE INIT)
 const { iniciarAgendamentos } = require('./cron-jobs');
 const statusRoute = require('./status');
 const logger = require('./logger');
 
-// Inicia as rotinas automáticas de reset
+// Inicia as rotinas de reset mensal
 iniciarAgendamentos();
 
-// 4. CONFIGURAÇÃO DE CORS E MIDDLEWARES
+// 4. MIDDLEWARES
 const allowedOrigins = [
     'http://localhost:5173',
     'https://nexusbot-admin-production.up.railway.app'
@@ -53,7 +53,7 @@ app.use(express.json());
 const verificarAutenticacao = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ erro: "Token de autorização ausente." });
+        return res.status(401).json({ erro: "Token ausente." });
     }
     const idToken = authHeader.split('Bearer ')[1];
     try {
@@ -61,29 +61,22 @@ const verificarAutenticacao = async (req, res, next) => {
         req.user = decodedToken;
         next();
     } catch (error) {
-        return res.status(403).json({ erro: "Sessão inválida ou expirada." });
+        return res.status(403).json({ erro: "Sessão expirada." });
     }
 };
 
-// 6. ROTAS SISTÊMICAS
+// 6. ROTAS
 app.use('/status-sistema', statusRoute);
 
-// 7. ENDPOINTS DO DASHBOARD (REACT)
 app.get('/atendimentos/stats', verificarAutenticacao, async (req, res) => {
-    try {
-        // Mock de dados (Substituir por agregação real do Firestore no futuro)
-        res.json({
-            mes_atual: 1540,
-            mes_passado: 1252,
-            tendencia_percentual: 23,
-            taxa_resolucao: 89,
-            uso_plano_percentual: 92,
-            alerta_limite: true
-        });
-    } catch (error) {
-        await logger.salvarErro("API_STATS", error, "Erro ao processar estatísticas");
-        res.status(500).json({ erro: "Falha interna." });
-    }
+    res.json({
+        mes_atual: 1540,
+        mes_passado: 1252,
+        tendencia_percentual: 23,
+        taxa_resolucao: 89,
+        uso_plano_percentual: 92,
+        alerta_limite: true
+    });
 });
 
 app.get('/unidades', verificarAutenticacao, async (req, res) => {
@@ -98,17 +91,24 @@ app.get('/unidades', verificarAutenticacao, async (req, res) => {
     }
 });
 
-// 8. WEBHOOKS DINÂMICOS (META/WHATSAPP)
+// 6. WEBHOOKS DINÂMICOS (PARA SUPORTAR /webhook/admin)
+
+// Validação da URL (GET)
 app.get('/webhook/:unidadeId', (req, res) => {
-    if (req.query['hub.verify_token'] === process.env.WEBHOOK_VERIFY_TOKEN) {
+    const { unidadeId } = req.params;
+    const verify_token = process.env.WEBHOOK_VERIFY_TOKEN;
+
+    if (req.query['hub.verify_token'] === verify_token) {
+        console.log(`[META] Unidade ${unidadeId} validada com sucesso.`);
         res.status(200).send(req.query['hub.challenge']);
     } else {
         res.sendStatus(403);
     }
 });
 
+// Recebimento de Mensagens (POST)
 app.post('/webhook/:unidadeId', async (req, res) => {
-    const { unidadeId } = req.params;
+    const { unidadeId } = req.params; // Captura "admin" da URL
     try {
         const value = req.body.entry?.[0]?.changes?.[0]?.value;
         const message = value?.messages?.[0];
@@ -118,10 +118,11 @@ app.post('/webhook/:unidadeId', async (req, res) => {
             const from = message.from;
             const text = message.text?.body?.trim() || "";
 
+            // Atualiza a unidade específica no Firestore usando o ID da URL
             const unidadeRef = db.collection('empresas').doc(unidadeId);
+
             await unidadeRef.update({
-                mensagens_atuais: admin.firestore.FieldValue.increment(1),
-                ultimo_phone_id: phone_number_id
+                mensagens_atuais: admin.firestore.FieldValue.increment(1)
             });
 
             await unidadeRef.collection('atendimentos').add({
@@ -133,22 +134,25 @@ app.post('/webhook/:unidadeId', async (req, res) => {
             });
 
             // Resposta Automática
-            await axios.post(`https://graph.facebook.com/v18.0/${phone_number_id}/messages`, {
-                messaging_product: "whatsapp",
-                to: from,
-                text: { body: `NexusBot [${unidadeId}]: Recebemos sua mensagem.` },
-            }, {
-                headers: { "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}` }
+            await axios({
+                method: "POST",
+                url: `https://graph.facebook.com/v18.0/${phone_number_id}/messages`,
+                data: {
+                    messaging_product: "whatsapp",
+                    to: from,
+                    text: { body: `NexusBot [${unidadeId}]: Recebemos sua mensagem.` },
+                },
+                headers: { "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}` },
             });
         }
         res.sendStatus(200);
     } catch (error) {
-        await logger.salvarErro(unidadeId, error, `Erro no Webhook`);
+        await logger.salvarErro(unidadeId, error, `Erro no Webhook da unidade: ${unidadeId}`);
         res.sendStatus(500);
     }
 });
 
-// 9. MANUAL RESET E INICIALIZAÇÃO
+// RESET MANUAL
 app.post('/admin/reset-mensal', verificarAutenticacao, async (req, res) => {
     const { phone_id } = req.body;
     try {
@@ -167,6 +171,7 @@ app.post('/admin/reset-mensal', verificarAutenticacao, async (req, res) => {
     }
 });
 
+// ÚNICO APP.LISTEN AO FINAL
 app.listen(PORT, () => {
     console.log(`[SERVER] NexusBot operacional na porta ${PORT}`);
 });
