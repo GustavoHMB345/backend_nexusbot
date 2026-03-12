@@ -170,3 +170,25 @@ app.post('/admin/reset-mensal', verificarAutenticacao, async (req, res) => {
 app.listen(PORT, () => {
     console.log(`[SERVER] NexusBot operacional na porta ${PORT}`);
 });
+
+// ROTA TEMPORÁRIA PARA FORÇAR O REGISTRO NA META
+app.get('/force-register-nexus', async (req, res) => {
+    try {
+        const response = await axios.post(
+            `https://graph.facebook.com/v18.0/1084226368098115/register`,
+            {
+                messaging_product: "whatsapp",
+                pin: "978025"
+            },
+            {
+                headers: { 
+                    'Authorization': `Bearer EAAM5ZA4zmxX0BQZC2k1UHhTC24p9frfZBfLzQeiAzxky8HAkqPubkv8aNZAFbDZC84yGC6m9zdgSJRSEWZAU0vjCfh62PI57To2Gxa7BHby0iJZB9oAd54pp4ZCVRsnoqaV2LBYBNsPsKwMAZBpEYZAgRZCUXDQca7VKeBvbQ4LZAaS4ttEjtaVXDD4VrJeQUKQrcI2VNwZDZD`,
+                    'Content-Type': 'application/json' 
+                }
+            }
+        );
+        res.send(`✅ Sucesso! Resposta da Meta: ${JSON.stringify(response.data)}`);
+    } catch (error) {
+        res.status(500).send(`❌ Erro: ${error.response ? JSON.stringify(error.response.data) : error.message}`);
+    }
+});
