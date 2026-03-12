@@ -1,0 +1,22 @@
+# Dependências (O mais importante para o Railway)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Variáveis de Ambiente e Segredos (Segurança)
+.env
+.env.local
+serviceAccountKey.json
+*.pem
+
+# Pastas de Build e Logs
+dist/
+build/
+logs/
+*.log
+
+# Sistema e IDE
+.DS_Store
+.vscode/
+.idea/
