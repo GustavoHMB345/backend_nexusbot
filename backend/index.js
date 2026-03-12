@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.get('/', (req, res) => {
-    res.send('🚀 NexusBot Server está online e operando em Teresina!');
+    res.send('NexusBot Backend Operacional - Teresina');
 });
 
 // 2. INICIALIZAÇÃO DO FIREBASE
