@@ -3,12 +3,9 @@ const axios = require('axios');
 const admin = require('firebase-admin');
 const cors = require('cors');
 
+// 1. CONFIGURAÇÕES INICIAIS
 const app = express();
-const PORT = process.env.PORT || 8080; // Railway preenche o process.env.PORT automaticamente
-
-app.listen(PORT, '0.0.0.0', () => { // Adicionar o '0.0.0.0' ajuda o Railway a encontrar o app
-    console.log(`[SERVER] NexusBot operacional na porta ${PORT}`);
-});
+const PORT = process.env.PORT || 8080;
 
 // 2. INICIALIZAÇÃO DO FIREBASE
 if (!admin.apps.length) {
@@ -23,12 +20,14 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
+// 3. IMPORTAÇÃO DE MÓDULOS
 const { iniciarAgendamentos } = require('./cron-jobs');
 const statusRoute = require('./status');
 const logger = require('./logger');
 
 iniciarAgendamentos();
 
+// 4. MIDDLEWARES E CORS
 const allowedOrigins = [
     'http://localhost:5173',
     'https://nexusbot-admin-production.up.railway.app'
@@ -49,9 +48,9 @@ app.use(cors({
 
 app.use(express.json());
 
-// Rota raiz para status rápido
+// 5. ROTAS DE STATUS E HEALTHCHECK (Essencial para o Railway)
 app.get('/', (req, res) => {
-    res.send(' NexusBot Server [Teresina] operacional.');
+    res.status(200).send('🚀 NexusBot Server operacional.');
 });
 
 app.use('/status-sistema', statusRoute);
@@ -60,6 +59,7 @@ app.get('/atendimentos/stats', async (req, res) => {
     res.json({ mes_atual: 1540, tendencia: 23 });
 });
 
+// 6. WEBHOOKS (Validação e Recebimento)
 app.get('/webhook/:unidadeId', (req, res) => {
     if (req.query['hub.verify_token'] === process.env.WEBHOOK_VERIFY_TOKEN) {
         res.status(200).send(req.query['hub.challenge']);
@@ -81,10 +81,10 @@ app.post('/webhook/:unidadeId', async (req, res) => {
             const from = message.from; 
             const msgText = message.text?.body || "";
 
-            // Incremento no Firestore
+            // Incremento no Firestore (usando .set com merge para evitar erro de doc inexistente)
             const unidadeRef = db.collection('empresas').doc(unidadeId);
-            await unidadeRef.set({mensagens_atuais: 
-                admin.firestore.FieldValue.increment(1)
+            await unidadeRef.set({
+                mensagens_atuais: admin.firestore.FieldValue.increment(1)
             }, { merge: true });
 
             // Resposta Automática
@@ -93,7 +93,7 @@ app.post('/webhook/:unidadeId', async (req, res) => {
                 recipient_type: "individual",
                 to: from,
                 type: "text",
-                text: { body: `NexusBot [${unidadeId}]: Recebemos sua mensagem: "${msgText}". Como podemos ajudar?` },
+                text: { body: `NexusBot [${unidadeId}]: Recebemos sua mensagem: "${msgText}".` },
             }, {
                 headers: { "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}` }
             });
@@ -101,11 +101,11 @@ app.post('/webhook/:unidadeId', async (req, res) => {
         res.sendStatus(200);
     } catch (error) {
         console.error('Erro Webhook:', error.response?.data || error.message);
-        res.sendStatus(200); // Mantém 200 para evitar retentativas infinitas da Meta
+        res.sendStatus(200); 
     }
 });
 
+// 7. INICIALIZAÇÃO ÚNICA (Ouvindo em 0.0.0.0 para o Railway encontrar o app)
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`[SERVER] NexusBot operacional na porta ${PORT}`);
 });
-
