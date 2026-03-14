@@ -3,62 +3,50 @@ const axios = require('axios');
 const admin = require('firebase-admin');
 const cors = require('cors');
 
+// 1. CONFIGURAÇÕES INICIAIS
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// 2. INICIALIZAÇÃO DO FIREBASE (Sem o app.listen aqui!)
+// 2. MIDDLEWARES ESSENCIAIS (O Express precisa disso antes das rotas)
+app.use(cors());
+app.use(express.json());
+
+// 3. ROTA DE HEALTHCHECK (A primeira de todas para o Railway não derrubar o bot)
+app.get('/', (req, res) => {
+    res.status(200).send('🚀 NexusBot Online e Operante!');
+});
+
+// 4. INICIALIZAÇÃO DO FIREBASE
 if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-        })
-    });
+    try {
+        admin.initializeApp({
+            credential: admin.credential.cert({
+                projectId: process.env.FIREBASE_PROJECT_ID,
+                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+            })
+        });
+        console.log("✅ Firebase conectado com sucesso.");
+    } catch (err) {
+        console.error("❌ Erro ao iniciar Firebase:", err.message);
+    }
 }
 
 const db = admin.firestore();
 
-// 3. IMPORTAÇÃO DE MÓDULOS
+// 5. IMPORTAÇÃO DE MÓDULOS (Certifique-se que os arquivos existem)
 const { iniciarAgendamentos } = require('./cron-jobs');
 const statusRoute = require('./status');
-const logger = require('./logger');
 
-iniciarAgendamentos();
+try {
+    iniciarAgendamentos();
+} catch (e) {
+    console.log("Aviso: Falha ao iniciar agendamentos.");
+}
 
-// 4. MIDDLEWARES E CORS
-const allowedOrigins = [
-    'http://localhost:5173',
-    'https://nexusbot-admin-production.up.railway.app'
-];
-
-app.use(cors({
-    origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Acesso negado por CORS'));
-        }
-    },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-}));
-
-app.use(express.json());
-
-// 5. ROTAS DE STATUS E HEALTHCHECK (Essencial para o Railway)
-app.get('/', (req, res) => {
-    res.status(200).send('🚀 NexusBot Server operacional.');
-});
-
+// 6. ROTAS DE NEGÓCIO
 app.use('/status-sistema', statusRoute);
 
-app.get('/atendimentos/stats', async (req, res) => {
-    res.json({ mes_atual: 1540, tendencia: 23 });
-});
-
-// 6. WEBHOOKS (Validação e Recebimento)
 app.get('/webhook/:unidadeId', (req, res) => {
     if (req.query['hub.verify_token'] === process.env.WEBHOOK_VERIFY_TOKEN) {
         res.status(200).send(req.query['hub.challenge']);
@@ -70,41 +58,39 @@ app.get('/webhook/:unidadeId', (req, res) => {
 app.post('/webhook/:unidadeId', async (req, res) => {
     const { unidadeId } = req.params;
     try {
-        const entry = req.body.entry?.[0];
-        const changes = entry?.changes?.[0];
-        const value = changes?.value;
+        const value = req.body.entry?.[0]?.changes?.[0]?.value;
         const message = value?.messages?.[0];
 
         if (message) {
             const phone_number_id = value.metadata.phone_number_id;
-            const from = message.from; 
-            const msgText = message.text?.body || "";
+            const from = message.from;
+            const msgText = message.text?.body || "Mensagem sem texto";
 
-            // Incremento no Firestore (usando .set com merge para evitar erro de doc inexistente)
+            console.log(`📩 Mensagem de ${from}: ${msgText}`);
+
             const unidadeRef = db.collection('empresas').doc(unidadeId);
             await unidadeRef.set({
-                mensagens_atuais: admin.firestore.FieldValue.increment(1)
+                mensagens_atuais: admin.firestore.FieldValue.increment(1),
+                ultima_mensagem: new Date().toISOString()
             }, { merge: true });
 
-            // Resposta Automática
             await axios.post(`https://graph.facebook.com/v21.0/${phone_number_id}/messages`, {
                 messaging_product: "whatsapp",
-                recipient_type: "individual",
                 to: from,
                 type: "text",
-                text: { body: `NexusBot [${unidadeId}]: Recebemos sua mensagem: "${msgText}".` },
+                text: { body: `NexusBot [${unidadeId}]: Recebemos sua mensagem!` },
             }, {
                 headers: { "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}` }
             });
         }
         res.sendStatus(200);
     } catch (error) {
-        console.error('Erro Webhook:', error.response?.data || error.message);
-        res.sendStatus(200); 
+        console.error('❌ Erro no Webhook:', error.message);
+        res.sendStatus(200);
     }
 });
 
-// 7. INICIALIZAÇÃO ÚNICA (Ouvindo em 0.0.0.0 para o Railway encontrar o app)
+// 7. INICIALIZAÇÃO (Ouvindo em 0.0.0.0)
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`[SERVER] NexusBot operacional na porta ${PORT}`);
 });
