@@ -51,7 +51,7 @@ app.use(express.json());
 
 // Rota raiz para status rápido
 app.get('/', (req, res) => {
-    res.send('🚀 NexusBot Server [Teresina] operacional.');
+    res.send(' NexusBot Server [Teresina] operacional.');
 });
 
 app.use('/status-sistema', statusRoute);
@@ -83,9 +83,9 @@ app.post('/webhook/:unidadeId', async (req, res) => {
 
             // Incremento no Firestore
             const unidadeRef = db.collection('empresas').doc(unidadeId);
-            await unidadeRef.update({
-                mensagens_atuais: admin.firestore.FieldValue.increment(1)
-            });
+            await unidadeRef.set({mensagens_atuais: 
+                admin.firestore.FieldValue.increment(1)
+            }, { merge: true });
 
             // Resposta Automática
             await axios.post(`https://graph.facebook.com/v21.0/${phone_number_id}/messages`, {
