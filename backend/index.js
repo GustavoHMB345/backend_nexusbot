@@ -90,7 +90,9 @@ app.post('/webhook/:unidadeId', async (req, res) => {
     }
 });
 
-// 7. INICIALIZAÇÃO (Ouvindo em 0.0.0.0)
+// Adicione isso logo acima do app.listen no seu index.js
+console.log(`DEBUG: Tentando ligar na porta ${PORT} com IP 0.0.0.0`);
+
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[SERVER] NexusBot operacional na porta ${PORT}`);
+    console.log(` SUCESSO! NexusBot operacional na porta ${PORT}`);
 });
