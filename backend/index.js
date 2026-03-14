@@ -3,11 +3,9 @@ const axios = require('axios');
 const admin = require('firebase-admin');
 const cors = require('cors');
 
-// 1. CONFIGURAÇÕES INICIAIS E PORTA
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// 2. INICIALIZAÇÃO DO FIREBASE
 if (!admin.apps.length) {
     admin.initializeApp({
         credential: admin.credential.cert({
@@ -20,23 +18,20 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// 3. IMPORTAÇÃO DE MÓDULOS (APÓS FIREBASE INIT)
 const { iniciarAgendamentos } = require('./cron-jobs');
 const statusRoute = require('./status');
 const logger = require('./logger');
 
-// Inicia as rotinas de reset mensal
 iniciarAgendamentos();
 
-// 4. MIDDLEWARES E CORS
 const allowedOrigins = [
     'http://localhost:5173',
     'https://nexusbot-admin-production.up.railway.app'
 ];
 
 app.use(cors({
-    origin: function (origin, callback) {
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
             callback(new Error('Acesso negado por CORS'));
@@ -49,14 +44,17 @@ app.use(cors({
 
 app.use(express.json());
 
-// 5. ROTAS DE STATUS E DASHBOARD
+// Rota raiz para status rápido
+app.get('/', (req, res) => {
+    res.send('🚀 NexusBot Server [Teresina] operacional.');
+});
+
 app.use('/status-sistema', statusRoute);
 
 app.get('/atendimentos/stats', async (req, res) => {
-    res.json({ mes_atual: 1540, tendencia: 23 }); // Mock inicial
+    res.json({ mes_atual: 1540, tendencia: 23 });
 });
 
-// 6. WEBHOOKS DINÂMICOS (UNIDADES TERESINA)
 app.get('/webhook/:unidadeId', (req, res) => {
     if (req.query['hub.verify_token'] === process.env.WEBHOOK_VERIFY_TOKEN) {
         res.status(200).send(req.query['hub.challenge']);
@@ -68,33 +66,40 @@ app.get('/webhook/:unidadeId', (req, res) => {
 app.post('/webhook/:unidadeId', async (req, res) => {
     const { unidadeId } = req.params;
     try {
-        const value = req.body.entry?.[0]?.changes?.[0]?.value;
+        const entry = req.body.entry?.[0];
+        const changes = entry?.changes?.[0];
+        const value = changes?.value;
         const message = value?.messages?.[0];
 
         if (message) {
             const phone_number_id = value.metadata.phone_number_id;
-            const from = message.from;
-            
+            const from = message.from; 
+            const msgText = message.text?.body || "";
+
+            // Incremento no Firestore
             const unidadeRef = db.collection('empresas').doc(unidadeId);
             await unidadeRef.update({
                 mensagens_atuais: admin.firestore.FieldValue.increment(1)
             });
 
-            await axios.post(`https://graph.facebook.com/v18.0/${phone_number_id}/messages`, {
+            // Resposta Automática
+            await axios.post(`https://graph.facebook.com/v21.0/${phone_number_id}/messages`, {
                 messaging_product: "whatsapp",
+                recipient_type: "individual",
                 to: from,
-                text: { body: `NexusBot [${unidadeId}]: Recebemos sua mensagem.` },
+                type: "text",
+                text: { body: `NexusBot [${unidadeId}]: Recebemos sua mensagem: "${msgText}". Como podemos ajudar?` },
             }, {
                 headers: { "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}` }
             });
         }
         res.sendStatus(200);
     } catch (error) {
-        res.sendStatus(500);
+        console.error('Erro Webhook:', error.response?.data || error.message);
+        res.sendStatus(200); // Mantém 200 para evitar retentativas infinitas da Meta
     }
 });
 
-// 7. INICIALIZAÇÃO ÚNICA DO SERVIDOR
 app.listen(PORT, () => {
     console.log(`[SERVER] NexusBot operacional na porta ${PORT}`);
 });
