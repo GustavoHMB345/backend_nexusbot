@@ -3,11 +3,10 @@ const axios = require('axios');
 const admin = require('firebase-admin');
 const cors = require('cors');
 
-// 1. CONFIGURAÇÕES INICIAIS
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// 2. INICIALIZAÇÃO DO FIREBASE
+// 2. INICIALIZAÇÃO DO FIREBASE (Sem o app.listen aqui!)
 if (!admin.apps.length) {
     admin.initializeApp({
         credential: admin.credential.cert({
