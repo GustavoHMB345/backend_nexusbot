@@ -6,6 +6,11 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+app.get('/', (req, res) => {
+    res.send('NexusBot Backend Operacional - Teresina');
+});
+
+// 2. INICIALIZAÇÃO DO FIREBASE
 if (!admin.apps.length) {
     admin.initializeApp({
         credential: admin.credential.cert({
