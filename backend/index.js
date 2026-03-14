@@ -4,10 +4,10 @@ const admin = require('firebase-admin');
 const cors = require('cors');
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8080; // Railway preenche o process.env.PORT automaticamente
 
-app.get('/', (req, res) => {
-    res.send('NexusBot Backend Operacional - Teresina');
+app.listen(PORT, '0.0.0.0', () => { // Adicionar o '0.0.0.0' ajuda o Railway a encontrar o app
+    console.log(`[SERVER] NexusBot operacional na porta ${PORT}`);
 });
 
 // 2. INICIALIZAÇÃO DO FIREBASE
