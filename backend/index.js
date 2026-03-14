@@ -6,6 +6,9 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// ==========================================
+// 1. MONITORAMENTO E SEGURANÇA (CSI do Bot)
+// ==========================================
 process.on('uncaughtException', (err) => {
     console.error('❌ CRASH DETECTADO (Uncaught Exception):', err.message);
     console.error(err.stack);
@@ -15,7 +18,14 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ REJEIÇÃO NÃO TRATADA em:', promise, 'razão:', reason);
 });
 
+// Bate um log a cada 30 segundos para impedir que o Railway ache o bot inativo
+setInterval(() => {
+    console.log("💓 Heartbeat: NexusBot continua operacional e aguardando mensagens...");
+}, 30000);
 
+// ==========================================
+// 2. MIDDLEWARES & HEALTHCHECK (Prioridade 0)
+// ==========================================
 app.use(cors());
 app.use(express.json());
 
@@ -24,11 +34,13 @@ app.get('/', (req, res) => {
     res.status(200).send('🚀 NexusBot Online e Blindado');
 });
 
-
+// ==========================================
+// 3. ABRIR A PORTA IMEDIATAMENTE
+// ==========================================
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ [OK] Servidor ouvindo na porta ${PORT}`);
     
-    // Inicialização "Lazy Load" para não travar o boot
+    // Inicialização "Lazy Load" (1 segundo de respiro para o boot)
     setTimeout(() => {
         iniciarTudo();
     }, 1000);
@@ -55,8 +67,9 @@ async function iniciarTudo() {
     }
 }
 
-
-// 4. WEBHOOKS
+// ==========================================
+// 4. WEBHOOKS (WhatsApp API)
+// ==========================================
 
 // Validação (GET)
 app.get('/webhook/:unidadeId', (req, res) => {
@@ -81,11 +94,11 @@ app.post('/webhook/:unidadeId', async (req, res) => {
         if (message) {
             const phone_number_id = value.metadata.phone_number_id;
             const from = message.from;
-            const msgText = message.text?.body || "";
+            const msgText = message.text?.body || "Mensagem sem texto";
 
             console.log(`📩 Processando mensagem de ${from}: ${msgText}`);
 
-            // 1. Gravar no Firestore
+            // 1. Gravar no Firestore (Usa o ID do documento que você tem no Firebase)
             await admin.firestore().collection('empresas').doc(unidadeId).set({
                 mensagens_atuais: admin.firestore.FieldValue.increment(1),
                 ultima_interacao: new Date().toISOString()
@@ -104,7 +117,6 @@ app.post('/webhook/:unidadeId', async (req, res) => {
         }
         res.sendStatus(200);
     } catch (error) {
-        // Log detalhado do erro de envio
         console.error('❌ Erro ao processar webhook:', error.response?.data || error.message);
         res.sendStatus(200); 
     }
