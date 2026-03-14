@@ -6,21 +6,29 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// 1. MIDDLEWARES (Configuração rápida)
+process.on('uncaughtException', (err) => {
+    console.error('❌ CRASH DETECTADO (Uncaught Exception):', err.message);
+    console.error(err.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ REJEIÇÃO NÃO TRATADA em:', promise, 'razão:', reason);
+});
+
+
 app.use(cors());
 app.use(express.json());
 
-// 2. ROTA DE HEALTHCHECK (Prioridade Máxima)
 app.get('/', (req, res) => {
     console.log("🚦 Railway checou a saúde do bot!");
-    res.status(200).send('🚀 NexusBot Online');
+    res.status(200).send('🚀 NexusBot Online e Blindado');
 });
 
-// 3. ABRIR A PORTA IMEDIATAMENTE
+
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ [OK] Servidor ouvindo na porta ${PORT}`);
     
-    // 4. INICIALIZAÇÃO "PREGUIÇOSA" (Lazy Load)
+    // Inicialização "Lazy Load" para não travar o boot
     setTimeout(() => {
         iniciarTudo();
     }, 1000);
@@ -47,7 +55,10 @@ async function iniciarTudo() {
     }
 }
 
-// 5. ROTAS DO WEBHOOK
+
+// 4. WEBHOOKS
+
+// Validação (GET)
 app.get('/webhook/:unidadeId', (req, res) => {
     if (req.query['hub.verify_token'] === process.env.WEBHOOK_VERIFY_TOKEN) {
         res.status(200).send(req.query['hub.challenge']);
@@ -56,13 +67,12 @@ app.get('/webhook/:unidadeId', (req, res) => {
     }
 });
 
+// Recebimento (POST)
 app.post('/webhook/:unidadeId', async (req, res) => {
     const { unidadeId } = req.params;
 
-    // --- MUDANÇA AQUI: LOG DE DIAGNÓSTICO ---
     console.log(`📢 ALGO CHEGOU NA UNIDADE: ${unidadeId}`);
     console.log("📦 Corpo da requisição:", JSON.stringify(req.body, null, 2));
-    // ----------------------------------------
 
     try {
         const value = req.body.entry?.[0]?.changes?.[0]?.value;
@@ -75,21 +85,26 @@ app.post('/webhook/:unidadeId', async (req, res) => {
 
             console.log(`📩 Processando mensagem de ${from}: ${msgText}`);
 
+            // 1. Gravar no Firestore
             await admin.firestore().collection('empresas').doc(unidadeId).set({
                 mensagens_atuais: admin.firestore.FieldValue.increment(1),
                 ultima_interacao: new Date().toISOString()
             }, { merge: true });
 
+            // 2. Responder no WhatsApp
             await axios.post(`https://graph.facebook.com/v21.0/${phone_number_id}/messages`, {
                 messaging_product: "whatsapp",
                 to: from,
                 text: { body: `NexusBot [${unidadeId}]: Recebemos sua mensagem!` },
-            }, { headers: { "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}` } });
+            }, { 
+                headers: { "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}` } 
+            });
             
             console.log(`✅ Resposta enviada para ${from}`);
         }
         res.sendStatus(200);
     } catch (error) {
+        // Log detalhado do erro de envio
         console.error('❌ Erro ao processar webhook:', error.response?.data || error.message);
         res.sendStatus(200); 
     }
