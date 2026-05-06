@@ -86,10 +86,3 @@ Funcionalidades exclusivas para contas com nível de acesso Premium.
    * `WHATSAPP_API_TOKEN`: Credencial da API Meta.
 4. Executar em modo de desenvolvimento: `npm run dev`.
 
----
-
-## Orientações para você Lucas🫵!
-
-O sistema de backend opera com uma rotina de Reset Mensal automatizada, executada invariavelmente no primeiro dia de cada mês. Durante este processo, o valor contido em `mensagens_atuais` é migrado para o campo `mensagens_mes_anterior` para fins de histórico e cálculo de ROI.
-
-No desenvolvimento da interface em React, é obrigatório monitorar o campo `alerta_limite`. Este booleano é ativado quando o consumo da unidade ultrapassa 90% da cota disponível no mês. Caso o valor seja verdadeiro, a interface deve obrigatoriamente exibir o alerta visual (animação de pulso) no card correspondente, conforme as diretrizes de design estabelecidas.
